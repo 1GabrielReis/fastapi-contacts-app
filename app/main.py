@@ -1,65 +1,60 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from . import models, database
-
-models.Base.metadata.create_all(bind=database.engine)
+from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from sqlalchemy import select
+from models import users, contacts
+from utils import hash_password, verify_password
+from database import database
 
 app = FastAPI()
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the FastAPI Contacts App!"}
+templates = Jinja2Templates(directory="templates")
 
-# Função para gerenciar as sessões do banco de dados
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+@app.on_event("startup")
+async def startup():
+    await database.connect()
 
-# Criar um novo usuário
-@app.post("/users/")
-def create_user(name: str, email: str, db: Session = Depends(get_db)):
-    user = models.User(name=name, email=email)
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+@app.on_event("shutdown")
+async def shutdown():
+    await database.disconnect()
 
-# Criar um novo contato
+# Rota para registrar um novo usuário
+@app.post("/register/")
+async def register_user(username: str, password: str, is_admin: bool = False):
+    hashed_password = hash_password(password)
+    query = users.insert().values(username=username, password=hashed_password, is_admin=is_admin)
+    await database.execute(query)
+    return {"message": "Usuário registrado com sucesso"}
+
+# Função para autenticar o usuário
+async def authenticate_user(username: str, password: str):
+    query = select([users]).where(users.c.username == username)
+    user = await database.fetch_one(query)
+    if user and verify_password(password, user["password"]):
+        return user
+    raise HTTPException(status_code=400, detail="Credenciais inválidas")
+
+# Rota para a página de login
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+# Rota para realizar login
+@app.post("/login")
+async def login(request: Request, username: str, password: str):
+    user = await authenticate_user(username, password)
+    return templates.TemplateResponse("dashboard.html", {"request": request, "user": user})
+
+# Rota para listar contatos do usuário autenticado
+@app.get("/contacts/", response_class=HTMLResponse)
+async def get_contacts(request: Request, user: dict = Depends(authenticate_user)):
+    query = select([contacts]).where(contacts.c.owner_id == user["id"])
+    user_contacts = await database.fetch_all(query)
+    return templates.TemplateResponse("contacts.html", {"request": request, "contacts": user_contacts})
+
+# Rota para criar um novo contato
 @app.post("/contacts/")
-def create_contact(name: str, phone: str, email: str, user_id: int, db: Session = Depends(get_db)):
-    contact = models.Contact(name=name, phone=phone, email=email, user_id=user_id)
-    db.add(contact)
-    db.commit()
-    db.refresh(contact)
-    return contact
-
-# Listar todos os usuários
-@app.get("/users/")
-def list_users(db: Session = Depends(get_db)):
-    users = db.query(models.User).all()
-    return users
-
-# Listar todos os contatos
-@app.get("/contacts/")
-def list_contacts(db: Session = Depends(get_db)):
-    contacts = db.query(models.Contact).all()
-    return contacts
-
-# Obter os detalhes de um usuário específico pelo ID
-@app.get("/users/{user_id}")
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-# Obter os detalhes de um contato específico pelo ID
-@app.get("/contacts/{contact_id}")
-def get_contact(contact_id: int, db: Session = Depends(get_db)):
-    contact = db.query(models.Contact).filter(models.Contact.id == contact_id).first()
-    if not contact:
-        raise HTTPException(status_code=404, detail="Contact not found")
-    return contact
+async def create_contact(request: Request, name: str, email: str, user: dict = Depends(authenticate_user)):
+    query = contacts.insert().values(name=name, email=email, owner_id=user["id"])
+    await database.execute(query)
+    return {"message": "Contato criado com sucesso"}

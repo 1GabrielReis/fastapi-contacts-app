@@ -1,0 +1,18 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Controle</title>
+</head>
+<body>
+    <h1>Bem-vindo, {{ user.username }}!</h1>
+    {% if user.is_admin %}
+        <h2>Administração</h2>
+        <p>Acesso a funcionalidades administrativas.</p>
+    {% else %}
+        <h2>Usuário Regular</h2>
+        <p>Você está logado como usuário normal.</p>
+    {% endif %}
+    <a href="/contacts/">Ver Contatos</a>
+</body>
+</html>

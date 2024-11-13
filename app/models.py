@@ -1,23 +1,28 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+import sqlalchemy
+from sqlalchemy import Table, Column, Integer, String, Boolean, ForeignKey, MetaData
+from database import DATABASE_URL
 
-Base = declarative_base()
+metadata = MetaData()
 
-class User(Base):
-    __tablename__ = 'users'
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
+# Tabela de usuários
+users = Table(
+    "users",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("username", String, unique=True),
+    Column("password", String),
+    Column("is_admin", Boolean, default=False)
+)
 
-    contacts = relationship("Contact", back_populates="owner")
+# Tabela de contatos
+contacts = Table(
+    "contacts",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String),
+    Column("email", String),
+    Column("owner_id", Integer, ForeignKey("users.id"))
+)
 
-class Contact(Base):
-    __tablename__ = 'contacts'
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    phone = Column(String)
-    email = Column(String)
-    user_id = Column(Integer, ForeignKey('users.id'))
-
-    owner = relationship("User", back_populates="contacts")
+engine = sqlalchemy.create_engine(DATABASE_URL)
+metadata.create_all(engine)
