@@ -2,6 +2,7 @@ import sqlalchemy
 from sqlalchemy import Table, Column, Integer, String, Boolean, ForeignKey, MetaData
 from database import DATABASE_URL
 
+
 metadata = MetaData()
 
 # Tabela de usuários
